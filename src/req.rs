@@ -20,7 +20,7 @@ impl TryFrom<&str> for Method {
     fn try_from(value: &str) -> Result<Self, Self::Error> {
         match value {
             "GET" => Ok(Method::Get),
-            _ => Err(anyhow::anyhow!("unknown method")),
+            m => Err(anyhow::anyhow!("unsupported method: {m}")),
         }
     }
 }
@@ -47,7 +47,7 @@ pub async fn parse_request(mut stream: impl AsyncBufRead + Unpin) -> anyhow::Res
         line_buffer.clear();
         stream.read_line(&mut line_buffer).await?;
 
-        if line_buffer == "\n" || line_buffer == "\r\n" {
+        if line_buffer.is_empty() || line_buffer == "\n" || line_buffer == "\r\n" {
             break;
         }
 
@@ -75,6 +75,12 @@ mod tests {
 
     use indoc::indoc;
     use maplit::hashmap;
+
+    #[tokio::test]
+    async fn no_headers() {
+        let mut stream = Cursor::new("GET /foo HTTP/1.1\r\n");
+        let req = parse_request(&mut stream).await.unwrap();
+    }
 
     #[tokio::test]
     async fn test_parse_request() {
