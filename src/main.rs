@@ -1,10 +1,6 @@
-use tokio::{
-    io::{AsyncWriteExt, BufStream},
-    net::TcpListener,
-};
+use tokio::{io::BufStream, net::TcpListener};
 use tracing::info;
 
-mod client;
 mod req;
 mod resp;
 
@@ -22,15 +18,25 @@ async fn main() -> anyhow::Result<()> {
 
     let listener = TcpListener::bind(format!("0.0.0.0:{port}")).await.unwrap();
 
-    info!("Listening on: {}", listener.local_addr()?);
+    info!("listening on: {}", listener.local_addr()?);
 
     loop {
         let (stream, addr) = listener.accept().await?;
-        let mut conn = client::Connection::new(BufStream::new(stream));
+        let mut stream = BufStream::new(stream);
 
-        info!(?addr, "new connection");
+        // do not block the main thread, spawn a new task
+        tokio::spawn(async move {
+            info!(?addr, "new connection");
 
-        while let Ok(req) = conn.next_request().await {
+            match req::parse_request(&mut stream).await {
+                Ok(req) => info!(?req, "incoming request"),
+                Err(e) => {
+                    info!(?e, "failed to parse request");
+                }
+            }
+        });
+
+        /*while let Ok(req) = req::parse_request(&mut stream).await {
             info!(?addr, ?req, "incoming request");
 
             let resp = resp::Response::from_html(
@@ -41,8 +47,6 @@ async fn main() -> anyhow::Result<()> {
             resp.write(&mut conn.stream).await?;
 
             conn.stream.flush().await?;
-        }
-
-        conn.stream.write_all("Hello, world!\n".as_bytes()).await?;
+        }*/
     }
 }
