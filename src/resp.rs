@@ -1,7 +1,7 @@
-use std::io::Cursor;
 use std::{
     collections::HashMap,
     fmt::{Display, Formatter},
+    io::Cursor,
 };
 
 use maplit::hashmap;
@@ -19,9 +19,9 @@ impl<S: AsyncRead + Unpin> Response<S> {
         let headers = self
             .headers
             .iter()
-            .map(|(k, v)| format!("{}: {}\r\n", k, v))
+            .map(|(k, v)| format!("{}: {}", k, v))
             .collect::<Vec<_>>()
-            .join("");
+            .join("\r\n");
 
         format!("HTTP/1.1 {}\r\n{headers}\r\n\r\n", self.status)
     }
@@ -43,7 +43,7 @@ impl Response<Cursor<Vec<u8>>> {
 
         let headers = hashmap! {
             "Content-Type".to_string() => "text/html".to_string(),
-            "Content-Length".to_string() => (bytes.len() + 2).to_string(),
+            "Content-Length".to_string() => bytes.len().to_string(),
         };
 
         Self {

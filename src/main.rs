@@ -34,19 +34,13 @@ async fn main() -> anyhow::Result<()> {
                     info!(?e, "failed to parse request");
                 }
             }
-        });
-
-        /*while let Ok(req) = req::parse_request(&mut stream).await {
-            info!(?addr, ?req, "incoming request");
 
             let resp = resp::Response::from_html(
                 resp::Status::NotFound,
                 include_str!("../static/404.html"),
             );
 
-            resp.write(&mut conn.stream).await?;
-
-            conn.stream.flush().await?;
-        }*/
+            resp.write(&mut stream).await.unwrap();
+        });
     }
 }
