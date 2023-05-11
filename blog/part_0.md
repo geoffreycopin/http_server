@@ -40,7 +40,7 @@ nc -l 8080
 Now, if we open a new terminal and use `curl` send a simple GET request to 
 our server, we should see the following output:
 
-<img src="https://github.com/geoffreycopin/http_server/blob/65207d0188ecd7ef8dbc39a83ebd4ac31289b56f/blog/img/coloured-get.png">
+<img src="https://raw.githubusercontent.com/geoffreycopin/http_server/gh-pages/blog/img/coloured-get.png">
 
 Let's break down the request parts:
 * <span style="background-color: #F8676A">the method:</span>
@@ -201,7 +201,7 @@ INFO http_server: incoming request req=Request { method: Get, path: "/", headers
 
 At this stage, we'll answer every request with a static `Not found` page.
 Our response will have the following format:
-<img src="img/coloured-response.png">
+<img src="https://raw.githubusercontent.com/geoffreycopin/http_server/gh-pages/blog/img/coloured-response.png">
 
 Let's explore the different parts of the response:
 * the status line: contains the protocol version, the status code and a
