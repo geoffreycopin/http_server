@@ -1,7 +1,9 @@
 use std::{env::current_dir, io, path::PathBuf};
 
-use crate::req::Request;
-use crate::resp::{Response, Status};
+use crate::{
+    req::Request,
+    resp::{Response, Status},
+};
 
 #[derive(Debug, Clone)]
 pub struct StaticFileHandler {

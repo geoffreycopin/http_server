@@ -1,25 +1,32 @@
-use std::net::SocketAddr;
+use std::{net::SocketAddr, path::PathBuf};
 
 use clap::Parser;
 use tokio::{
-    io::{AsyncWrite, AsyncWriteExt, BufStream},
+    io::{AsyncWrite, BufStream},
     net::{TcpListener, TcpStream},
     signal,
-    sync::broadcast,
 };
+use tokio_util::sync::CancellationToken;
 use tracing::{error, info};
 
-mod args;
 mod handler;
 mod req;
 mod resp;
+
+#[derive(Parser, Debug)]
+pub struct Args {
+    #[arg(short, long, default_value_t = 8080)]
+    pub port: u16,
+    #[arg(short, long)]
+    pub root: Option<PathBuf>,
+}
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
     // Initialize the default tracing subscriber.
     tracing_subscriber::fmt::init();
 
-    let args = args::Args::parse();
+    let args = Args::parse();
     let port = args.port;
     let handler = args
         .root
@@ -32,41 +39,47 @@ async fn main() -> anyhow::Result<()> {
 
     info!("listening on: {}", listener.local_addr()?);
 
-    let (exit_sender, _) = broadcast::channel::<bool>(1);
+    let cancel_token = CancellationToken::new();
 
     tokio::spawn({
-        let exit_sender = exit_sender.clone();
+        let cancel_token = cancel_token.clone();
         async move {
             if let Ok(()) = signal::ctrl_c().await {
                 info!("received Ctrl-C, shutting down");
-                exit_sender.send(true).unwrap();
+                cancel_token.cancel();
             }
         }
     });
 
+    let mut tasks = Vec::new();
+
     loop {
-        let mut exit_receiver = exit_sender.subscribe();
+        let cancel_token = cancel_token.clone();
 
         tokio::select! {
             Ok((stream, addr)) = listener.accept() => {
                 let handler = handler.clone();
-                tokio::spawn(async move {
-                    if let Err(e) = handle_client(stream, addr, &handler).await {
+                let client_task = tokio::spawn(async move {
+                    if let Err(e) = handle_client(cancel_token, stream, addr, &handler).await {
                         error!(?e, "failed to handle client");
                     }
                 });
+                tasks.push(client_task);
             },
-            _ = exit_receiver.recv() => {
-                info!("shutting down");
+            _ = cancel_token.cancelled() => {
+                info!("stop listening");
                 break;
             }
         }
     }
 
+    futures::future::join_all(tasks).await;
+
     Ok(())
 }
 
 async fn handle_client(
+    cancel_token: CancellationToken,
     stream: TcpStream,
     addr: SocketAddr,
     handler: &handler::StaticFileHandler,
@@ -76,21 +89,28 @@ async fn handle_client(
     info!(?addr, "new connection");
 
     loop {
-        let req = req::parse_request(&mut stream).await;
-
-        match req {
-            Ok(req) => {
-                info!(?req, "incoming request");
-                handle_req(req, &handler, &mut stream).await?;
+        tokio::select! {
+            req = req::parse_request(&mut stream) => {
+                match req {
+                    Ok(req) => {
+                        info!(?req, "incoming request");
+                        let close_conn = handle_req(req, &handler, &mut stream).await?;
+                        if close_conn {
+                            break;
+                        }
+                    }
+                    Err(e) => {
+                        error!(?e, "failed to parse request");
+                        break;
+                    }
+                }
             }
-            Err(e) => {
-                error!(?e, "failed to parse request");
+            _ = cancel_token.cancelled() => {
+                info!(?addr, "closing connection");
                 break;
             }
         }
     }
-
-    info!(?addr, "closing connection");
 
     Ok(())
 }
@@ -100,7 +120,7 @@ async fn handle_req<S: AsyncWrite + Unpin>(
     handler: &handler::StaticFileHandler,
     stream: &mut S,
 ) -> anyhow::Result<bool> {
-    let keep_alive = req.headers.get("Connection") == Some(&"keep-alive".to_string());
+    let close_connection = req.headers.get("Connection") == Some(&"close".to_string());
 
     match handler.handle(req).await {
         Ok(resp) => {
@@ -112,7 +132,5 @@ async fn handle_req<S: AsyncWrite + Unpin>(
         }
     };
 
-    stream.flush().await.unwrap();
-
-    Ok(keep_alive)
+    Ok(close_connection)
 }
